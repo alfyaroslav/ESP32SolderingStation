@@ -2,8 +2,7 @@
 #include <pgmspace.h>
 
 const char profile_html[] PROGMEM = R"rawliteral(
-
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
   <head>
     <title>ESP32 ReflowStation</title>
@@ -106,14 +105,20 @@ input {
     </div>
     <div class="content">
       <div class="card-grid">
-	          <button onclick="SaveProfile()">Save Profile</button>
+	          <button onclick="SaveProfile()">Сохранить профиль</button>
+			  <p>
+			  <input type="file" name="frmFile" id="frmFile" onchange="readFile(this)" style="width: 250px;"/>
+			  </p>
+			  <p><button onclick="exportProfile()">Экспортировать профиль</button>
+			  <a href="" id="linkForSavingFile" style="display:none" /></a></p>
+			  
               <p class="name"><span id="info" class="info"></span></p>
               <p class="name"><span id="status" class="status"></span></p>
         <table align="center"><tr><td>
 		<div id="table_container">
 		    <table id="table_settings" class="table"><tbody>
 			  <tr><td>Параметр</td><td>Значение</td></tr>
-			  <tr><td>Наименование</td><td><input type="text" name="alias" id="alias" style="width: 100px;"></td></tr>
+			  <tr><td>Наименование</td><td><input type="text" name="aliasprofile" id="aliasprofile" style="width: 100px;"></td></tr>
 			  <tr><td>Количество шагов ВИ и НИ</td><td><input type="text" name="profile_steps" id="profile_steps"></td></tr>
 			  <tr><td>Размер стола</td><td><input type="text" name="table_size" id="table_size"></td></tr>
 			  <tr><td>Пропорциональный коэффициент ВИ</td><td><input type="text" name="kp1" id="kp1"></td></tr>
@@ -149,6 +154,157 @@ var chart;
 var table = document.getElementById("table_container");
 var profile_id;
 
+var nodeArray=new Array();  
+
+function listTable(table_name) {
+  var Ret = new Array();
+  var time="";
+  var temp="";
+  for (var i = 1, row; row = document.getElementById(table_name+"-calc").rows[i]; i++) {
+	  time = time + document.getElementById(table_name+"-time-"+(i-1)).value + ",";
+	  
+	  if (i == 1) {
+	    temp = temp + document.getElementById(table_name+"-temp-start-0").value + ",";
+	  }
+	  else {
+	    temp = temp + row.cells[2].innerHTML + ",";
+	  }
+	} 
+   Ret["time"] = time;
+   Ret["temp"] = temp;
+   return Ret;
+}
+
+function exportProfile() {
+
+
+	let arr = [];
+
+	arr["aliasprofile"] = document.getElementById('aliasprofile').value;
+
+	var arr_tmp = listTable("top");
+	arr.push(["time_step_top", arr_tmp["time"]]);
+	arr.push(["temperature_step_top", arr_tmp["temp"]]);
+
+	arr_tmp = listTable("bottom");
+	arr.push(["time_step_bottom", arr_tmp["time"]]);
+	arr.push(["temperature_step_bottom", arr_tmp["temp"]]);
+
+	arr_tmp = listTable("pcb");
+	arr.push(["time_step_pcb", arr_tmp["time"]]);
+	arr.push(["temperature_step_pcb", arr_tmp["temp"]]);
+
+	arr.push(["profile_steps", document.getElementById('profile_steps').value]);
+	arr.push(["table_size", document.getElementById('table_size').value]);
+	arr.push(["kp1", document.getElementById('kp1').value]);
+	arr.push(["ki1", document.getElementById('ki1').value]);
+	arr.push(["kd1", document.getElementById('kd1').value]);
+	arr.push(["kp2", document.getElementById('kp2').value]);
+	arr.push(["ki2", document.getElementById('ki2').value]);
+	arr.push(["kd2", document.getElementById('kd2').value]);
+	arr.push(["kp3", document.getElementById('kp3').value]);
+	arr.push(["ki3", document.getElementById('ki3').value]);
+	arr.push(["kd3", document.getElementById('kd3').value]);
+	arr.push(["max_correction_top", document.getElementById('max_correction_top').value]);
+	arr.push(["max_correction_bottom", document.getElementById('max_correction_bottom').value]);
+	arr.push(["max_pcb_delta", document.getElementById('max_pcb_delta').value]);
+	arr.push(["hold_lenght", document.getElementById('hold_lenght').value]);
+	arr.push(["participation_rate_top", document.getElementById('participation_rate_top').value]);
+
+    var data = arr.map(item => item.join(':')).join('\n');
+
+    var a = document.getElementById("linkForSavingFile");
+    var file = new Blob([data], {
+      type: 'plain/text'
+    });
+    a.href = URL.createObjectURL(file);
+    a.download = document.getElementById('aliasprofile').value+".txt";
+    a.click();
+}
+
+
+function clearTable(table_name) {
+
+   for (var i = 1, row; row = document.getElementById(table_name+"-calc").rows[i]; i++) {
+	  document.getElementById(table_name+"-time-"+(i-1)).value = 0;
+	  if (i == 1) {
+	    document.getElementById(table_name+"-temp-start-0").value = 0;
+	  }
+	  else {
+	    row.cells[2].innerHTML = 0;
+	  }
+	}
+}
+
+function readFile(input) {
+  const graph_param = [
+	  "time_step_top",
+	  "temperature_step_top",
+	  "time_step_bottom",
+	  "temperature_step_bottom",
+	  "time_step_pcb",
+	  "temperature_step_pcb",
+  ];
+
+  var file = input.files[0];
+
+  var reader = new FileReader();
+
+  reader.readAsText(file);
+
+  reader.onload = function() {
+    //console.log(reader.result);
+
+	clearTable("top");
+	clearTable("bottom");
+	clearTable("pcb");
+	
+	Calc("top", 1);
+	Calc("bottom", 1);
+	Calc("pcb", 1);
+	
+	var lines = reader.result.split('\n');
+    for(var line = 0; line < lines.length-1; line++){
+	  var linesSpace = lines[line].split(':');
+	  
+	  if (!graph_param.includes(linesSpace[0])) {
+	    document.getElementById(linesSpace[0]).value = linesSpace[1];
+	  }
+	  else
+	  {
+        var linesSpace2 = linesSpace[0].split('_');
+	    var table_name = linesSpace2[2]; 
+		var table_type = linesSpace2[0]; 
+		
+	    var lines_gr = linesSpace[1].split(',');
+		for(var line_gr = 0; line_gr < lines_gr.length-1; line_gr++){
+		  
+	      if (table_type == "time") {
+		    document.getElementById(table_name+"-time-"+line_gr).value = lines_gr[line_gr];
+		   }
+		   if (table_type == "temperature") {
+		    if (line_gr == 0) {
+			 document.getElementById(table_name+"-temp-start-0").value = lines_gr[line_gr];
+            } else {			
+		      var row = document.getElementById(table_name+"-calc").rows[line_gr+1];
+			  row.cells[2].innerHTML = lines_gr[line_gr];
+			}
+		   }
+		}
+	   
+	  }
+    }
+	Calc("top", 1);
+	Calc("bottom", 1);
+	Calc("pcb", 1);
+  };
+
+  reader.onerror = function() {
+    console.log(reader.error);
+  };
+
+}
+
 function getRandomNumber(min, max) {
       return Math.floor(Math.random() * (max - min) + min)
   }  
@@ -172,7 +328,7 @@ function TableSettings() {
 	  document.getElementById('hold_lenght').value = Data['hold_lenght'];
 	  document.getElementById('participation_rate_top').value = Data['participation_rate_top'];
 	  document.getElementById('status').innerHTML = "[ "+ Data['currentProfile'] + " ] " + Data['alias'];
-	  document.getElementById('alias').value = Data['alias'];
+	  document.getElementById('aliasprofile').value = Data['alias'];
 	  profile_id = Data['currentProfile'];
 	});
 
@@ -397,7 +553,7 @@ function SaveProfile() {
 	obj.setings["max_pcb_delta"] = document.getElementById('max_pcb_delta').value;
 	obj.setings["hold_lenght"] = document.getElementById('hold_lenght').value; 
 	obj.setings["participation_rate_top"] = document.getElementById('participation_rate_top').value; 
-  obj.setings["alias"] = document.getElementById('alias').value; 
+    obj.setings["alias"] = document.getElementById('aliasprofile').value; 
 	  
 	//alert(JSON.stringify(obj));
 	console.log(JSON.stringify(obj));
