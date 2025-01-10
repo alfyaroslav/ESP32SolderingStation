@@ -497,6 +497,8 @@ void update_aliasprofile(int arg_cnt, char **args);
   String listFiles(bool ishtml = false);
   #ifdef Enable_WiFi
     String IPlocal;
+    void notFound(AsyncWebServerRequest *request);
+    void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
   #endif
 
 hw_timer_t *Timer0_Cfg = NULL;
@@ -1184,6 +1186,12 @@ void setup()
     #ifdef show_diagnostics_com
       Serial.println(timeClient.getFormattedTime()); //Выводим время  
     #endif
+     
+    // if url isn't found
+    server.onNotFound(notFound);
+
+    // run handleUpload function when any file is uploaded
+    server.onFileUpload(handleUpload);
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
      request->send(200, "text/html", index_html);
@@ -1253,6 +1261,9 @@ void setup()
             logmessage += " deleted";
             SPIFFS.remove(fileName);
             request->send(200, "text/plain", "Deleted File: " + String(fileName));
+          }
+          else if (strcmp(fileAction, "write") == 0) {
+            request->send(200, "text/plain", "");
           } else {
             logmessage += " ERROR: invalid action param supplied";
             request->send(400, "text/plain", "ERROR: invalid action param supplied");
@@ -3454,8 +3465,9 @@ String listFiles(bool ishtml) {
   while (foundfile) {
     if (ishtml) {
       returnText += "<tr align='left'><td>" + String(foundfile.name()) + "</td><td>" + humanReadableSize(foundfile.size()) + "</td>";
-      returnText += "<td><button onclick=\"downloadDeleteButton(\'" + String(foundfile.name()) + "\', \'download\')\">Download</button>";
-      returnText += "<td><button onclick=\"downloadDeleteButton(\'" + String(foundfile.name()) + "\', \'delete\')\">Delete</button></tr>";
+      returnText += "<td><button onclick=\"fileButton(\'" + String(foundfile.name()) + "\', \'download\')\">Download</button>";
+      returnText += "<td><button onclick=\"fileButton(\'" + String(foundfile.name()) + "\', \'delete\')\">Delete</button>";
+      returnText += "<td><button onclick=\"fileButton(\'" + String(foundfile.name()) + "\', \'load\')\">Load graph</button></tr>";
     } else {
       returnText += "File: " + String(foundfile.name()) + " Size: " + humanReadableSize(foundfile.size()) + "\n";
     }
@@ -3467,6 +3479,51 @@ String listFiles(bool ishtml) {
   root.close();
   foundfile.close();
   return returnText;
+}
+
+void notFound(AsyncWebServerRequest *request) {
+  String logmessage = "Client:" + request->client()->remoteIP().toString() + " " + request->url();
+  #ifdef show_diagnostics_com
+    Serial.println(logmessage);
+  #endif  
+  request->send(404, "text/plain", "Not found");
+}
+
+void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+  // make sure authenticated before allowing upload
+    String logmessage = "Client:" + request->client()->remoteIP().toString() + " " + request->url();
+    #ifdef show_diagnostics_com
+      Serial.println(logmessage);
+    #endif
+
+    if (!index) {
+      logmessage = "Upload Start: " + String(filename);
+      // open the file on first call and store the file handle in the request object
+      request->_tempFile = SPIFFS.open("/" + filename, "w");
+      #ifdef show_diagnostics_com
+        Serial.println(logmessage);
+      #endif
+    }
+
+    if (len) {
+      // stream the incoming chunk to the opened file
+      request->_tempFile.write(data, len);
+      logmessage = "Writing file: " + String(filename) + " index=" + String(index) + " len=" + String(len);
+      #ifdef show_diagnostics_com
+        Serial.println(logmessage);
+      #endif
+    }
+
+    if (final) {
+      logmessage = "Upload Complete: " + String(filename) + ",size: " + String(index + len);
+      // close the file handle as the upload is now done
+      request->_tempFile.close();
+      #ifdef show_diagnostics_com
+        Serial.println(logmessage);
+      #endif
+      request->redirect("/");
+    }
+  
 }
 
 #endif
