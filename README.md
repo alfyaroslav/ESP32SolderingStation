@@ -3,9 +3,9 @@
 Arduino скетч переделанный для работы на ESP32
 Добавлен WEB сервер для мониторинга и редактирования профилей.
 
-Перед компиляцией нужно указать SID и пароль для вашей сети в файле BSetting.h. 
-const char* ssid = "";
-const char* password = "";
+Перед компиляцией нужно указать SID и пароль для вашей сети в файле BSetting.h.</br>
+const char* ssid = "";</br>
+const char* password = "";</br>
 
 Контроллер ESP32-S3-DevKitC-1 N16R8 </br>
 Сенсорный Tft-дисплей SPI ILI9488 3.5"</br>
