@@ -29,11 +29,11 @@ const char index_html[] PROGMEM = R"rawliteral(
 			  <td>
 			     <table>
 				  <tr>
-					  <td scope="row" colspan="2"><button onclick='websocket.send("CANCEL")' class="button_red">STOP</button></td>
+					  <td scope="row" colspan="2"><button onclick='websocket.send("CANCEL");listFiles();' class="button_red">STOP</button></td>
 				  </tr>
 				  <tr>
-					  <td><button onclick='websocket.send("START")' class="button_green">START</button></td>
-					  <td><button onclick='websocket.send("HOT_START")' class="button">HOT START</button></td>
+					  <td><button onclick='cmdStart("START");' class="button_green">START</button></td>
+					  <td><button onclick='cmdStart("HOT_START");' class="button">HOT START</button></td>
 				  </tr>
 				  <tr>
 					  <td scope="row" colspan="2"><button onclick='websocket.send("UP")' class="button">+ UP</button></td>
@@ -224,8 +224,9 @@ function onLoad(event) {
     initWebSocket();
 }
 
-function toggle(){
-    websocket.send('toggle');
+function cmdStart(cmd){
+    reload_csv('./file?name=/log_save.csv&action=download');
+    websocket.send(cmd);
 }
 
 var chart;

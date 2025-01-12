@@ -106,7 +106,7 @@
 
 #if defined(ESP8266) || defined(ESP32)
   #include "esp_system.h"
-  #include "SPIFFS.h"
+  #include "FFat.h"
   #include "FS.h"
   #include <SPI.h>
   #include <dong.wav.h>
@@ -494,6 +494,7 @@ void update_aliasprofile(int arg_cnt, char **args);
 
 
 #if defined(ESP8266) || defined(ESP32)
+
   String listFiles(bool ishtml = false);
   #ifdef Enable_WiFi
     String IPlocal;
@@ -501,43 +502,60 @@ void update_aliasprofile(int arg_cnt, char **args);
     void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
   #endif
 
-hw_timer_t *Timer0_Cfg = NULL;
+  #ifdef interruptTimer
+    hw_timer_t *Timer0_Cfg = NULL;
+  #endif
 
-void IRAM_ATTR Timer0_ISR()
-{
-    Dimming();
-}
+  void IRAM_ATTR INT0_ISR()
+  {
+      Dimming();
+      //Serial.println("INT0_ISR");
+  }
 
+  #ifdef Enable_WiFi
 
-#ifdef Enable_WiFi
+    String DataFile = "log_save.csv";
+    File file;
 
-String DataFile = "log_save.csv";
-File file;
-String ProfileDataFile = "profile_save.csv";
-//File profile_file;
+    void StartLogFile(bool start) {
 
-void StartLogFile(bool start) {
+      int file_size = 0;
 
-    if (!start) {
-      String file_name = String(timeClient.getEpochTime());
-      SPIFFS.rename("/"+DataFile, "/" + file_name + "_"+DataFile);
-    }
-   
+      /*if (!start) {
+      File file2 = SPIFFS.open("/"+DataFile, FILE_READ);
+      file_size = file2.size();
+      
+      if (file_size > 0) {
+        String file_name = String(timeClient.getEpochTime());
+        SPIFFS.rename("/"+DataFile, "/" + file_name +"_"+ DataFile);
+      }
+     }
+    */
+
     #ifdef show_diagnostics_com
       Serial.println(listFiles());
     #endif
 
-    File root = SPIFFS.open("/");
-    file = SPIFFS.open("/"+DataFile, FILE_WRITE);
+    File root = FFat.open("/");
+
+    file = FFat.open("/"+DataFile, FILE_READ);
+    file_size = file.size();
+    file.close();
+    if (file_size > 0) {
+       String file_name = String(timeClient.getEpochTime());
+       FFat.rename("/"+DataFile, "/" + file_name +"_"+ DataFile);
+    }
+
+    file = FFat.open("/"+DataFile, FILE_WRITE);
     if(!file){
       #ifdef show_diagnostics_com 
         Serial.println("There was an error opening the file for writing");
       #endif
     } 
     file.close();
-}
+  }
 
-void GenerateJson(int cmd) {
+  void GenerateJson(int cmd) {
 
     //cmd
     // 1 - Chart
@@ -604,6 +622,7 @@ void GenerateJson(int cmd) {
     jsonDocument["setpoint_top"] = SetPoint_Top;
     jsonDocument["setpoint_bottom"] = SetPoint_Bottom;
     jsonDocument["setpoint_pcb"] = SetPoint_Pcb;
+    jsonDocument["reflowState"] = reflowState;
     jsonDocument["TextError"] = JsonTextError;
    }
 
@@ -611,17 +630,18 @@ void GenerateJson(int cmd) {
     ws.textAll(json_buffer);
 
     if (cmd == 2) 
-     if (reflowState >= REFLOW_STATE_RUNNING ) 
+     //if (reflowState >= REFLOW_STATE_PRE_HEATER)
+     if ((reflowState >= REFLOW_STATE_RUNNING ) and (reflowState < REFLOW_STATE_COMPLETE))
      {
-      file = SPIFFS.open("/"+DataFile, FILE_APPEND);
+      file = FFat.open("/"+DataFile, FILE_APPEND);
       sprintf (buf_WebPlot, "%d,%03d,%03d,%03d,%03d,%03d,%03d,%03d,%03d,%03d", (int)CurrentProfileSecond, (int)tc1, (int)tc2, (int)tc3, (Output1), (Output2), (Output3), (int)TopDelta, (int)BottomDelta, (int)PcbDelta );
       file.println(buf_WebPlot);
       file.close();
     }
-}
+  }
 
 
-void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
+ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
     data[len] = 0;
@@ -648,8 +668,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
      
     if (strcmp((char*)data, "UP") == 0) {
        if (reflowState == REFLOW_STATE_IDLE) {
-        const char* tempargs[3] = {"1","2","150"}; // Передаем в функцию MANUAL_TEMP три аргумента
-        //MANUAL_TEMP(3, tempargs);
+        char* tempargs[3] = {"1","2","150"}; // Передаем в функцию MANUAL_TEMP три аргумента
+        MANUAL_TEMP(3, tempargs);
        }
        else {
          UP(0,0);//вызов функции UP
@@ -658,17 +678,17 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 
     if (strcmp((char*)data, "DOWN") == 0) {
        if (reflowState == REFLOW_STATE_IDLE) {
-        const char* tempargs[3] = {"1","2","100"}; // Передаем в функцию MANUAL_TEMP три аргумента
-        //MANUAL_TEMP(3, tempargs);
+        char* tempargs[3] = {"1","2","100"}; // Передаем в функцию MANUAL_TEMP три аргумента
+        MANUAL_TEMP(3, tempargs);
        }
        else {
          DOWN(0,0);//вызов функции UP
        }
     }
   }
-}
+ }
 
-void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   switch (type) {
     case WS_EVT_CONNECT:
       #ifdef show_diagnostics_com
@@ -687,8 +707,8 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
     case WS_EVT_ERROR:
       break;
   }
-}
-#endif
+ }
+ #endif
 
 #endif
 
@@ -1146,12 +1166,12 @@ void setup()
   EEPROM.begin(EEPROM_SIZE);
 
     // check file system
-  if (!SPIFFS.begin()) {
+  if (!FFat.begin()) {
       #ifdef show_diagnostics_com
         Serial.println("formating file system");
       #endif
-      SPIFFS.format();
-      SPIFFS.begin();
+      FFat.format();
+      FFat.begin();
   }
   
 
@@ -1210,7 +1230,7 @@ void setup()
     });
 
     server.on("/log_save.csv", HTTP_GET, [](AsyncWebServerRequest *request){
-     request->send(SPIFFS, "/"+DataFile);
+     request->send(FFat, "/"+DataFile);
     });
 
     server.on("/profile.json", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -1245,7 +1265,7 @@ void setup()
 
         logmessage = "Client:" + request->client()->remoteIP().toString() + " " + request->url() + "?name=" + String(fileName) + "&action=" + String(fileAction);
 
-        if (!SPIFFS.exists(fileName)) {
+        if (!FFat.exists(fileName)) {
           #ifdef show_diagnostics_com
             Serial.println(logmessage + " ERROR: file does not exist");
           #endif
@@ -1256,10 +1276,10 @@ void setup()
           #endif
           if (strcmp(fileAction, "download") == 0) {
             logmessage += " downloaded";
-            request->send(SPIFFS, fileName, "application/octet-stream");
+            request->send(FFat, fileName, "application/octet-stream");
           } else if (strcmp(fileAction, "delete") == 0) {
             logmessage += " deleted";
-            SPIFFS.remove(fileName);
+            FFat.remove(fileName);
             request->send(200, "text/plain", "Deleted File: " + String(fileName));
           }
           else if (strcmp(fileAction, "write") == 0) {
@@ -1369,19 +1389,28 @@ void setup()
   pinMode(RelayPin1, OUTPUT);
   pinMode(RelayPin2, OUTPUT);
   
+  #if defined(ESP8266) || defined(ESP32)  
+    pinMode(ZCC_PIN, INPUT);
+  #endif
 
   initEeprom();
 
 
   NextReadTemperatures = millis();
-  #if defined(__AVR__)
-    attachInterrupt(ZCC_PIN, Dimming, RISING); // настроить порт прерывания 0 = 2й или 1 = 3й цифровой пин
-  #elif defined(ESP8266) || defined(ESP32)  
-    Timer0_Cfg = timerBegin(1000000); // Set timer frequency to 1Mhz
-    timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR);
-    timerAlarm(Timer0_Cfg, 100000, true, 0); // 100ms period
-    timerStop(Timer0_Cfg);
-  #endif  
+    
+
+    #if defined(__AVR__)
+       attachInterrupt(ZCC_PIN, Dimming, RISING); // настроить порт прерывания 0 = 2й или 1 = 3й цифровой пин
+    #elif defined(ESP8266) || defined(ESP32)  
+      #ifndef interruptTimer
+        attachInterrupt(ZCC_PIN, INT0_ISR, RISING); //
+      #else
+        Timer0_Cfg = timerBegin(1000000); // Set timer frequency to 1Mhz
+        timerAttachInterrupt(Timer0_Cfg, &INT0_ISR);
+        timerAlarm(Timer0_Cfg, 100000, true, 0); // 100ms period
+        timerStop(Timer0_Cfg);
+      #endif
+    #endif  
  
 
   // LIST OF COMMANDS Alias-----cmdAdd("receive_from_com", execute_command_name);---receive_from_com - текст полученный из COM -------execute_command_name - имя функции которую выполнить------------------------
@@ -1700,9 +1729,11 @@ void loop()
     CurrentProfileRealSecond = 0;
     LastAutoHold = 0;
 
-    #if defined(ESP8266) || defined(ESP32)  
+    #if defined(ESP8266) || defined(ESP32) 
+      #ifdef interruptTimer 
           timerStart(Timer0_Cfg);
           timerWrite(Timer0_Cfg, 0);
+      #endif
     #endif  
 
      // фиксируем размер стола
@@ -2221,7 +2252,9 @@ void loop()
   case REFLOW_STATE_COMPLETE:
 
     #if defined(ESP8266) || defined(ESP32)  
+      #ifdef interruptTimer
           timerStop(Timer0_Cfg);
+      #endif
     #endif  
 
     digitalWrite(P1_PIN, LOW);
@@ -3099,10 +3132,13 @@ void BLOCK(int arg_cnt, char **args)        // Prevent interruptions during sett
     {
       Serial.println("Settings mode enable");
       blockflagM = true;
-      #if defined(__AVR__)
+      
+      #ifndef interruptTimer
         detachInterrupt(ZCC_PIN); // Additional transfer problem prevention
-      #elif defined(ESP8266) || defined(ESP32)
-        timerStop(Timer0_Cfg);
+      #else
+        #if defined(ESP8266) || defined(ESP32)
+          timerStop(Timer0_Cfg);
+        #endif
       #endif  
     }
   }
@@ -3119,12 +3155,17 @@ void UNBLOCK(int arg_cnt, char **args)
     {
       Serial.println("Settings mode disable");
       blockflagM = false;
+
       #if defined(__AVR__)
-        attachInterrupt(ZCC_PIN, Dimming, RISING);  // Additional transfer problem prevention
+         attachInterrupt(ZCC_PIN, Dimming, RISING);  // Additional transfer problem prevention
       #elif defined(ESP8266) || defined(ESP32)
-        timerStart(Timer0_Cfg);
-        timerWrite(Timer0_Cfg, 0);
-      #endif  
+         #ifndef interruptTimer
+           attachInterrupt(ZCC_PIN, INT0_ISR, RISING);  // Additional transfer problem prevention
+         #else
+           timerStart(Timer0_Cfg);
+           timerWrite(Timer0_Cfg, 0);
+         #endif
+      #endif 
     }
   }
 }
@@ -3284,8 +3325,10 @@ void MANUAL_TEMP(int arg_cnt, char **args)
       GenerateJson(4);
 #endif
      #if defined(ESP8266) || defined(ESP32)  
+       #ifdef interruptTimer 
           timerStart(Timer0_Cfg);
           timerWrite(Timer0_Cfg, 0);
+       #endif
       #endif  
 
       if (profile.table_size == 1)
@@ -3368,8 +3411,10 @@ void MANUAL_POWER(int arg_cnt, char **args)
 #endif
  
       #if defined(ESP8266) || defined(ESP32)  
+        #ifdef interruptTimer 
           timerStart(Timer0_Cfg);
           timerWrite(Timer0_Cfg, 0);
+        #endif
       #endif  
 
       if (profile.table_size == 1)
@@ -3453,11 +3498,12 @@ String humanReadableSize(const size_t bytes) {
 
 // list all of the files, if ishtml=true, return html rather than simple text
 String listFiles(bool ishtml) {
-  String returnText = "";
+
+  String returnText = "<p>Free: "+ String(humanReadableSize((FFat.totalBytes() - FFat.usedBytes()))) + " / Total: "+ String(humanReadableSize(FFat.totalBytes()))+"</p>";
   #ifdef show_diagnostics_com
-    Serial.println("Listing files stored on SPIFFS");
+    Serial.println("Listing files stored on FFat");
   #endif
-  File root = SPIFFS.open("/");
+  File root = FFat.open("/");
   File foundfile = root.openNextFile();
   if (ishtml) {
     returnText += "<table><tr><th align='left'>Name</th><th align='left'>Size</th><th></th><th></th></tr>";
@@ -3499,7 +3545,7 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
     if (!index) {
       logmessage = "Upload Start: " + String(filename);
       // open the file on first call and store the file handle in the request object
-      request->_tempFile = SPIFFS.open("/" + filename, "w");
+      request->_tempFile = FFat.open("/" + filename, "w");
       #ifdef show_diagnostics_com
         Serial.println(logmessage);
       #endif

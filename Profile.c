@@ -210,6 +210,7 @@ function exportProfile() {
 	arr.push(["max_pcb_delta", document.getElementById('max_pcb_delta').value]);
 	arr.push(["hold_lenght", document.getElementById('hold_lenght').value]);
 	arr.push(["participation_rate_top", document.getElementById('participation_rate_top').value]);
+  arr.push(["aliasprofile", document.getElementById('aliasprofile').value]);
 
     var data = arr.map(item => item.join(':')).join('\n');
 
