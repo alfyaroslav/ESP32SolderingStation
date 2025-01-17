@@ -10,6 +10,7 @@
 
 #if defined(ESP8266) || defined(ESP32)
 #define Enable_WiFi
+//#define Enable_WiFi_OTA
 //#define Enable_Bluetooth
 
 const char* ssid = "ALF";

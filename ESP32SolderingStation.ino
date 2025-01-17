@@ -98,7 +98,9 @@
   #include <WiFiUdp.h>
   #include <AsyncTCP.h>
   #include <ESPAsyncWebServer.h>
+  #ifdef Enable_WiFi_OTA
   #include <AsyncElegantOTA.h>
+  #endif
   #include "Web.h"
   #include "Profile.h"
   #include <ArduinoJson.h>
@@ -1355,8 +1357,9 @@ void setup()
 
     ws.onEvent(onEvent);
     server.addHandler(&ws);
-
+    #ifdef Enable_WiFi_OTA
     AsyncElegantOTA.begin(&server);
+    #endif
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
     server.begin();
 
@@ -1606,7 +1609,9 @@ void loop()
 
   #if defined(ESP8266) || defined(ESP32)
   #ifdef Enable_WiFi
+    #ifdef Enable_WiFi_OTA
     AsyncElegantOTA.loop();
+    #endif
     switch (ws_status)
     {
       case WS_CMD_NULL:
