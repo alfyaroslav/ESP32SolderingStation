@@ -113,7 +113,7 @@
   #include <SPI.h>
   #include <dong.wav.h>
   
-  #include <Wire.h>
+  //#include <Wire.h>
   //#include <Adafruit_MLX90614.h>
 
   #ifdef Enable_WiFi
