@@ -75,7 +75,7 @@
  *   @2 RUN - Собственно этап пайки по профилю
  *   @3 HOLD AUTO - включена автопауза
  *   @4 HOLD MANUAL - включена ручная пауза
- *   @5 COMPLETE - профиль выполнен
+ *   @5 COMPLETE - профиль3 выполнен
  *   @6 SIGNAL (Sound type)
  *
  *    Serial.println("@0;");
@@ -123,8 +123,26 @@
   NTPClient timeClient(ntpUDP);
   #endif
   
+  #if TEMP_SENSOR_TOP == 2 || TEMP_SENSOR_BOTTOM == 2 || TEMP_SENSOR_PCB == 2
+    #include <Adafruit_MAX31865.h>
+  #endif
+
+  #if TEMP_SENSOR_TOP == 2
+    Adafruit_MAX31865 thermo1 = Adafruit_MAX31865(thermoCS1, thermoMOSI1, thermoDO1, thermoCLK1);
+  #endif
+  #if TEMP_SENSOR_BOTTOM == 2
+    Adafruit_MAX31865 thermo2 = Adafruit_MAX31865(thermoCS2, thermoMOSI2, thermoDO2, thermoCLK2); 
+  #endif
+  #if TEMP_SENSOR_PCB == 2 
+    Adafruit_MAX31865 thermo3 = Adafruit_MAX31865(thermoCS3, thermoMOSI3, thermoDO3, thermoCLK3);
+  #endif
+ 
+  
   /*Adafruit_MLX90614 mlx = Adafruit_MLX90614();*/
    
+
+
+
 #endif
 
 
@@ -670,7 +688,7 @@ void update_aliasprofile(int arg_cnt, char **args);
      
     if (strcmp((char*)data, "UP") == 0) {
        if (reflowState == REFLOW_STATE_IDLE) {
-        char* tempargs[3] = {"1","2","150"}; // Передаем в функцию MANUAL_TEMP три аргумента
+        char* tempargs[3] = {"1","2","250"}; // Передаем в функцию MANUAL_TEMP три аргумента
         MANUAL_TEMP(3, tempargs);
        }
        else {
@@ -974,6 +992,11 @@ void LcdDrawLayout() { // Отрисовка сетки экрана с надп
  
       //  myGLCD.print("Rate=",5, 133);
       //  myGLCD.print("Rate=",5, 245);
+
+        #ifdef Enable_WiFi
+        myGLCD.print(&IPlocal[0], 100, 256);
+        #endif
+
         updateScreen = false;
        
 }
@@ -1252,6 +1275,20 @@ void setup()
      request->send_P(200, "audio/wav", sound1, 45616);
     });
    
+    server.on("/format", HTTP_GET, [](AsyncWebServerRequest * request) {
+     FFat.begin();  
+     bool formatted = FFat.format();
+     String logmessage = "Client:" + request->client()->remoteIP().toString() + " " + request->url();
+
+     if (formatted) {
+      request->send(200, "text/plain", "FFat formatted successfully");
+     }
+     else {
+      request->send(200, "text/plain", "FFat formatting failed");
+     }
+
+    });
+
     server.on("/listfiles", HTTP_GET, [](AsyncWebServerRequest * request) {
      String logmessage = "Client:" + request->client()->remoteIP().toString() + " " + request->url();
      request->send(200, "text/plain", listFiles(true));
@@ -1492,6 +1529,23 @@ void setup()
   Serial.println("Setup END"); // DIAGNOSTICS
 #endif
 
+#if TEMP_SENSOR_TOP == 2
+   thermo1.begin(MAX31865_2WIRE);  // set to 2WIRE or 4WIRE as necessary
+#elif TEMP_SENSOR_TOP == 3
+   thermo1.begin(MAX31865_3WIRE);  // set to 3WIRE
+#endif
+
+#if TEMP_SENSOR_BOTTOM == 2
+   thermo2.begin(MAX31865_2WIRE);  // set to 2WIRE or 4WIRE as necessary
+#elif TEMP_SENSOR_BOTTOM == 3
+   thermo2.begin(MAX31865_3WIRE);  // set to 3WIRE
+#endif
+
+#if TEMP_SENSOR_PCB == 2
+   thermo3.begin(MAX31865_2WIRE);  // set to 2WIRE or 4WIRE as necessary
+#elif TEMP_SENSOR_BOTTOM == 3
+   thermo3.begin(MAX31865_3WIRE);  // set to 3WIRE
+#endif
 /*
  if (!mlx.begin()) {
    #ifdef show_diagnostics_com
@@ -2386,9 +2440,26 @@ void readAllTemperatures()
       Input3 = Input3 * 0.95 + 0.05 * (SetPoint_Pcb); //симуляция замера температуры с задержкой на 10 измерений
  
  #else
-      Input1 = Input1 * 0.6 + 0.4 * (max6675_read_temp(thermoCLK1, thermoCS1, thermoDO1)); // сглаживание температуры на 12 измерений
-      Input2 = Input2 * 0.6 + 0.4 * (max6675_read_temp(thermoCLK2, thermoCS2, thermoDO2)); // сглаживание температуры на 12 измерений
-      Input3 = Input3 * 0.4 + 0.6 * (max6675_read_temp(thermoCLK3, thermoCS3, thermoDO3)); // сглаживание температуры на 8 измерений
+      #if TEMP_SENSOR_TOP == 1   
+        Input1 = Input1 * 0.6 + 0.4 * (max6675_read_temp(thermoCLK1, thermoCS1, thermoDO1)); // сглаживание температуры на 12 измерений
+      #elif TEMP_SENSOR_TOP == 2
+        uint16_t rtd2 = thermo1.readRTD();
+        Input1 = thermo1.temperature(RNOMINAL, RREF);
+      #endif
+      #if TEMP_SENSOR_BOTTOM == 1   
+        Input2 = Input2 * 0.6 + 0.4 * (max6675_read_temp(thermoCLK2, thermoCS2, thermoDO2)); // сглаживание температуры на 12 измерений
+      #elif TEMP_SENSOR_BOTTOM == 2
+        uint16_t rtd2 = thermo2.readRTD();
+        Input2 = thermo2.temperature(RNOMINAL, RREF);
+      #endif   
+      #if TEMP_SENSOR_PCB == 1   
+        Input3 = Input3 * 0.4 + 0.6 * (max6675_read_temp(thermoCLK3, thermoCS3, thermoDO3)); // сглаживание температуры на 8 измерений
+      #elif TEMP_SENSOR_PCB == 2
+        uint16_t rtd3 = thermo3.readRTD();
+        Input3 = thermo3.temperature(RNOMINAL, RREF);
+      #endif
+     
+
       //Input4 = Input3 * 0.4 + 0.6 * (mlx.readObjectTempC()); // сглаживание температуры на 8 измерений
 #endif
       tc1 = Input1;
