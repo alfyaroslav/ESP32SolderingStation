@@ -93,6 +93,7 @@
 #endif
 
 #ifdef Enable_WiFi
+  #include <ArduinoJson.h>
   #include <WiFi.h>
   #include <NTPClient.h>
   #include <WiFiUdp.h>
@@ -103,7 +104,6 @@
   #endif
   #include "Web.h"
   #include "Profile.h"
-  #include <ArduinoJson.h>
 #endif
 
 #if defined(ESP8266) || defined(ESP32)
@@ -333,9 +333,11 @@ boolean  button_state1 = false; //признак нажатой кнопки
 //------------------------------------------------------------------------
 
 // секция ввода/вывода для ПЭВМ-----------------------------------------------
-char buf[45];  // буфер вывода температур через сом порт
+char buf[128];  // буфер вывода температур через сом порт
 char buf2[60]; // буфер вывода служебных данных через сом порт вр время выполнения профиля
  
+volatile bool DimmingDetected = false;
+
 //---------------------------------------------------------------------------
 
 // Cекция для кнопок----------------------------------------------------------
@@ -1660,6 +1662,11 @@ void initEeprom() // Запись в 0 позицию профиля по умо
 
 void loop()
 {
+  // Вывод данных в UART
+  if (DimmingDetected) {
+    DimmingDetected = false; 
+    Serial.println(buf);
+  }
 
   #if defined(ESP8266) || defined(ESP32)
   #ifdef Enable_WiFi
@@ -1699,7 +1706,7 @@ void loop()
 
 
   cmdPoll(); // Получить команды из ком порта если есть
-
+  
  
 
   #ifdef UseButtons
@@ -2497,7 +2504,7 @@ void Dimming() // Вызывается по прерыванию от детек
   {
     if (!blockflag & !blockflagM)
     {
-      //Serial.println(buf);
+      DimmingDetected = true;
     }
     AverageOutput1 = AverageOutput2 = AverageOutput3 = 0;
     Secs = 1; // Начинаем считать с 1, т.к. в первый шаг мы только присваиваем значение, но не прибавляем.
